@@ -58,7 +58,15 @@ python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 
-# 4. 创建 systemd 服务
+# 4. 创建凭据文件（必填，服务无默认值）
+sudo tee /etc/little-progress.env > /dev/null << EOF
+MB_ADMIN_PASSWORD=$(openssl rand -base64 24 | tr -d '/+=' | head -c 24)
+MB_ACCESS_CODE=$(openssl rand -base64 18 | tr -d '/+=' | head -c 12)
+MB_ADMIN_TOKEN=$(openssl rand -hex 32)
+EOF
+sudo chmod 600 /etc/little-progress.env
+
+# 5. 创建 systemd 服务
 sudo tee /etc/systemd/system/little-progress.service << 'EOF'
 [Unit]
 Description=Little Progress FastAPI
@@ -67,6 +75,7 @@ After=network.target
 [Service]
 User=ubuntu
 WorkingDirectory=/var/www/little-progress-server
+EnvironmentFile=/etc/little-progress.env
 ExecStart=/var/www/little-progress-server/venv/bin/uvicorn main:app --host 127.0.0.1 --port 8000
 Restart=always
 RestartSec=5
@@ -138,7 +147,7 @@ python -m uvicorn main:app --host 0.0.0.0 --port 8080 --reload
 
 **奖励阶梯**：50 分 → 1500 分，从一杯饮品到周末短途旅行。
 
-**管理后台**：`/admin.html`，默认密码 `admin123`。
+**管理后台**：`/admin.html`，密码为部署时写入 `/etc/little-progress.env` 的 `MB_ADMIN_PASSWORD`（仓库不提供默认值，缺失则服务拒绝启动）。
 
 ## 项目结构
 

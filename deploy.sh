@@ -45,6 +45,22 @@ pip install -q -r requirements.txt
 
 # 6. 创建 systemd 服务
 echo "⚙️ 创建 systemd 服务..."
+
+# 凭据必须由部署者提供，仓库里没有任何默认值。
+ENV_FILE=/etc/little-progress.env
+if ! sudo test -f "$ENV_FILE"; then
+  echo "🔑 未找到 $ENV_FILE，正在生成随机凭据..."
+  sudo tee "$ENV_FILE" > /dev/null << ENVEOF
+MB_ADMIN_PASSWORD=$(openssl rand -base64 24 | tr -d '/+=' | head -c 24)
+MB_ACCESS_CODE=$(openssl rand -base64 18 | tr -d '/+=' | head -c 12)
+MB_ADMIN_TOKEN=$(openssl rand -hex 32)
+ENVEOF
+  sudo chmod 600 "$ENV_FILE"
+  echo "  ✅ 已生成 $ENV_FILE（权限 600）。请记录其中的 MB_ACCESS_CODE 供前端登录使用。"
+else
+  echo "  ✅ 复用已有的 $ENV_FILE"
+fi
+
 sudo tee /etc/systemd/system/little-progress.service > /dev/null << 'SERVICE'
 [Unit]
 Description=Little Progress FastAPI
@@ -53,6 +69,7 @@ After=network.target
 [Service]
 User=ubuntu
 WorkingDirectory=/var/www/little-progress-server
+EnvironmentFile=/etc/little-progress.env
 ExecStart=/var/www/little-progress-server/venv/bin/uvicorn main:app --host 127.0.0.1 --port 8000
 Restart=always
 RestartSec=5
@@ -98,7 +115,7 @@ echo "========================"
 echo "✅ 部署完成！"
 echo "📱 打卡前端: http://43.153.155.195/"
 echo "📊 管理后台: http://43.153.155.195/admin.html"
-echo "🔐 后台密码: admin123"
+echo "🔐 访问码/后台密码: 见 $ENV_FILE"
 echo "========================"
 echo ""
 echo "查看运行状态: sudo systemctl status little-progress"

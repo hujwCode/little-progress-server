@@ -99,10 +99,12 @@ sleep 2 && curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/
 # 查看当前访问码
 cat /etc/systemd/system/little-progress.service | grep Environment | grep ACCESS
 
-# Step 2a: 编辑 systemd service
-vi /etc/systemd/system/little-progress.service
-# 在 [Service] 段添加或修改：
-# Environment=MB_ACCESS_CODE=新密码
+# Step 2a: 编辑凭据文件（不是 service 文件）
+sudo vi /etc/little-progress.env
+# 文件内容（每行 KEY=VALUE，权限 600）：
+#   MB_ADMIN_PASSWORD=<随机长串>
+#   MB_ACCESS_CODE=<随机短串>
+#   MB_ADMIN_TOKEN=<openssl rand -hex 32>
 
 # Step 2b: 重新加载配置并重启
 systemctl daemon-reload
@@ -111,10 +113,13 @@ systemctl restart little-progress
 
 ### 环境变量表
 
-| 变量 | 默认值 | 说明 |
-|------|--------|------|
-| `MB_ADMIN_PASSWORD` | `admin123` | 管理后台登录密码 |
-| `MB_ACCESS_CODE` | `xiaojinbu2025` | 前端访问码（用户打开页面时输入） |
+凭据存放在 `/etc/little-progress.env`（权限 600，**不在仓库内**，无默认值）：
+
+| 变量 | 说明 |
+|------|------|
+| `MB_ADMIN_PASSWORD` | 管理后台登录密码（必填，缺失则服务拒绝启动） |
+| `MB_ACCESS_CODE` | 前端访问码（必填，缺失则服务拒绝启动） |
+| `MB_ADMIN_TOKEN` | 管理 API 令牌；不设则每次启动随机生成 |
 
 **🔴 CHECKPOINT**：改完重启后，先用 curl 测试新密码是否生效，再通知用户：
 
@@ -281,9 +286,10 @@ ls -lh /var/www/little-progress-server/little-progress.db
 
 | 触发条件 | 一线修复 | 仍失败兜底 |
 |---------|---------|-----------|
-| 用户登录提示"访问码错误" | `curl -s http://localhost:8000/api/login -X POST -H 'Content-Type: application/json' -d '{"user_id":"me","code":"当前密码"}'` | 检查环境变量 `cat /etc/systemd/system/little-progress.service \| grep ACCESS` |
-| curl 测试返回 403 | 返回 `{"detail":"访问码错误"}` → 密码不匹配，检查 `MB_ACCESS_CODE` | 用默认密码 `xiaojinbu2025` 试，或查看 main.py 中默认值 |
+| 用户登录提示"访问码错误" | `curl -s http://localhost:8000/api/login -X POST -H 'Content-Type: application/json' -d '{"user_id":"me","code":"当前密码"}'` | 检查凭据文件 `sudo cat /etc/little-progress.env` |
+| curl 测试返回 403 | 返回 `{"detail":"访问码错误"}` → 密码不匹配，核对 `MB_ACCESS_CODE` | 修改 `MB_ACCESS_CODE` 后 `systemctl restart little-progress`（无默认值可退） |
 | curl 返回 404 | 返回 `{"detail":"User not found"}` → 数据库用户丢失 | 重启服务自动重建：`systemctl restart little-progress` |
+| 服务启动即退出 | `journalctl -u little-progress -n 30` 出现 `MB_ADMIN_PASSWORD is not set` | 按上文补全 `/etc/little-progress.env` |
 
 ## ❌ 不要做的事（按严重程度）
 
@@ -296,8 +302,8 @@ ls -lh /var/www/little-progress-server/little-progress.db
 
 ### 🟡 警告（安全风险）
 
-- 不要用默认密码 `admin123` 在生产环境
-- 不要用默认访问码 `xiaojinbu2025` 在面向公众的环境
+- 不要给 `MB_ADMIN_PASSWORD` / `MB_ACCESS_CODE` 设弱口令或复用旧值
+- 不要把 `/etc/little-progress.env` 的内容写回本仓库、README 或聊天记录
 - 不要关闭 `ufw` 防火墙（如果已启用）
 
 ### 🔵 注意（运维规范）

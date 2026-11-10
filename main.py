@@ -1,7 +1,6 @@
 import os
 import logging
 import calendar
-import hashlib
 import secrets
 from typing import Optional
 from datetime import date, datetime, timedelta
@@ -227,17 +226,29 @@ class RewardReorderRequest(BaseModel):
 
 # ── Admin auth / Access code ──
 
-ADMIN_PASSWORD = os.environ.get("MB_ADMIN_PASSWORD", "admin123")
-ACCESS_CODE = os.environ.get("MB_ACCESS_CODE", "xiaojinbu2025")
+def _require_env(name: str) -> str:
+    """Read a required secret from the environment; refuse to start without it.
+
+    This repository is public, so a hardcoded default would be a published
+    credential. Missing configuration must fail loudly at startup instead.
+    """
+    value = os.environ.get(name, "").strip()
+    if not value:
+        raise RuntimeError(
+            f"{name} is not set. Configure it in the systemd unit "
+            f"(Environment=...) before starting the service."
+        )
+    return value
+
+
+ADMIN_PASSWORD = _require_env("MB_ADMIN_PASSWORD")
+ACCESS_CODE = _require_env("MB_ACCESS_CODE")
+# Random per deployment; never derived from the password.
+ADMIN_TOKEN = os.environ.get("MB_ADMIN_TOKEN", "").strip() or secrets.token_hex(32)
 
 
 def _admin_token():
-    configured = os.environ.get("MB_ADMIN_TOKEN")
-    if configured:
-        return configured
-    return hashlib.sha256(
-        f"{ADMIN_PASSWORD}:little-progress-admin".encode("utf-8")
-    ).hexdigest()
+    return ADMIN_TOKEN
 
 
 def require_admin(x_admin_token: Optional[str] = Header(default=None)):
